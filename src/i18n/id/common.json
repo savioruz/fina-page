@@ -1,0 +1,11 @@
+{
+	"welcome": "Selamat datang di SvelteKit",
+	"description": "Kunjungi dokumentasi untuk mempelajari lebih lanjut tentang SvelteKit dan mulai membangun aplikasi web yang menakjubkan.",
+	"documentation_link": "Baca dokumentasi",
+	"loading": "Memuat...",
+	"error": "Maaf, terjadi kesalahan.",
+	"not_found": "Maaf, halaman yang Anda cari tidak ada.",
+	"back_to_home": "Kembali ke Beranda",
+	"language": "Bahasa",
+	"logo": "🇮🇩"
+}

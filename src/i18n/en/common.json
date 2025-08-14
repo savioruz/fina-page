@@ -1,0 +1,11 @@
+{
+	"welcome": "Welcome to SvelteKit",
+	"description": "Visit the documentation to learn more about SvelteKit and start building amazing web applications.",
+	"documentation_link": "Read the documentation",
+	"loading": "Loading...",
+	"error": "I'm sorry, but something went wrong.",
+	"not_found": "I'm sorry, but the page you're looking for doesn't exist.",
+	"back_to_home": "Back to Home",
+	"language": "Language",
+	"logo": "🇺🇸"
+}
