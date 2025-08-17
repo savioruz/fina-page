@@ -7,6 +7,7 @@
 	import { ModeWatcher } from 'mode-watcher';
 	import Navbar from '@/components/ui/navbar/navbar.svelte';
 	import { loadTranslations, locale } from '$lib/i18n';
+	import { authStore } from '$lib/stores/auth';
 	import { onMount } from 'svelte';
 
 	let { children, data } = $props();
@@ -22,6 +23,9 @@
 		await loadTranslations(targetLocale, 'common');
 		await loadTranslations(targetLocale, 'navigation');
 		locale.set(targetLocale);
+
+		authStore.init();
+
 		isI18nReady = true;
 	});
 </script>
@@ -68,11 +72,15 @@
 	{#if isI18nReady}
 		<Navbar />
 	{/if}
-	<main class="flex min-h-screen flex-col items-center justify-center py-8">
-		<div
-			class="flex w-full max-w-sm flex-col items-center justify-center px-4 md:max-w-screen-md md:px-0"
-		>
-			{@render children()}
-		</div>
-	</main>
+	{#if data.pathname.includes('/dashboard')}
+		{@render children()}
+	{:else}
+		<main class="flex min-h-screen flex-col items-center justify-center py-8">
+			<div
+				class="flex w-full max-w-sm flex-col items-center justify-center px-4 md:max-w-screen-md md:px-0"
+			>
+				{@render children()}
+			</div>
+		</main>
+	{/if}
 {/if}

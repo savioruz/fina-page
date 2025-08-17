@@ -39,7 +39,7 @@ function getPreferredLocale(acceptLanguage: string | null): string | null {
 	const languages = acceptLanguage
 		.split(',')
 		.map((lang) => lang.split(';')[0].trim().toLowerCase())
-		.map((lang) => lang.split('-')[0]); // Convert en-US to en
+		.map((lang) => lang.split('-')[0]);
 
 	for (const language of languages) {
 		if (supportedLocales.includes(language)) {
