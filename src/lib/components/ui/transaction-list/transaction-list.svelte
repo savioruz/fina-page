@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -9,29 +8,13 @@
 	$: activeText = $t('common.status.active');
 	$: inactiveText = $t('common.status.inactive');
 	$: viewProofText = $t('common.transaction.actions.view_proof');
-	$: editText = $t('common.transaction.actions.edit');
-	$: deleteText = $t('common.transaction.actions.delete');
 
 	export let transactions: Transaction[] = [];
 	export let isLoading = false;
 
-	// Dialog state for proof viewing
 	let showProofDialog = false;
 	let selectedProof: string | null = null;
 	let selectedProofTransaction: Transaction | null = null;
-
-	const dispatch = createEventDispatcher<{
-		edit: { transaction: Transaction };
-		delete: { id: string };
-	}>();
-
-	function handleEdit(transaction: Transaction) {
-		dispatch('edit', { transaction });
-	}
-
-	function handleDelete(id: string) {
-		dispatch('delete', { id });
-	}
 
 	function openProofDialog(transaction: Transaction) {
 		selectedProof = transaction.proof || null;
@@ -61,54 +44,86 @@
 		{$t('common.no_transactions_found')}
 	</div>
 {:else}
-	<div class="overflow-x-auto rounded-md border">
-		<table class="w-full text-sm">
-			<thead class="bg-muted/50">
-				<tr class="text-left">
-					<th class="p-3 font-medium">{$t('common.transaction.fields.date')}</th>
-					<th class="p-3 font-medium">{$t('common.transaction.fields.type')}</th>
-					<th class="p-3 font-medium">{$t('common.transaction.fields.category')}</th>
-					<th class="p-3 font-medium">{$t('common.transaction.fields.description')}</th>
-					<th class="p-3 font-medium">{$t('common.transaction.fields.active')}</th>
-					<th class="p-3 text-right font-medium">{$t('common.transaction.fields.amount_idr')}</th>
-					<th class="p-3 text-right font-medium">{$t('common.transaction.fields.actions')}</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each transactions as t (t.id)}
-					<tr class="border-t">
-						<td class="p-3 whitespace-nowrap">{formatDate(t.date)}</td>
-						<td class="p-3">
-							<Badge variant={t.type === 'income' ? 'default' : 'destructive'} class="capitalize">
-								{t.type}
-							</Badge>
-						</td>
-						<td class="p-3">{t.category_name}</td>
-						<td class="max-w-[240px] truncate p-3" title={t.description}>{t.description}</td>
-						<td class="p-3">
-							<Badge variant={t.active ? 'default' : 'secondary'}>
-								{t.active ? activeText : inactiveText}
-							</Badge>
-						</td>
-						<td class="p-3 text-right font-medium tabular-nums">{formatAmount(t.amount)}</td>
-						<td class="space-x-1 p-3 text-right">
-							{#if t.proof}
-								<Button size="sm" variant="outline" onclick={() => openProofDialog(t)}
-									>{viewProofText}</Button
-								>
-							{/if}
-							<Button size="sm" variant="ghost" onclick={() => handleEdit(t)}>{editText}</Button>
-							<Button
-								size="sm"
-								variant="ghost"
-								class="text-red-600"
-								onclick={() => handleDelete(t.id)}>{deleteText}</Button
-							>
-						</td>
+	<!-- Responsive table wrapper with horizontal scroll -->
+	<div class="w-full overflow-hidden rounded-md border">
+		<div class="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 overflow-x-auto">
+			<table class="w-full text-sm">
+				<thead class="bg-muted/50">
+					<tr class="text-left">
+						<th class="min-w-[80px] p-2 font-medium whitespace-nowrap sm:p-3"
+							>{$t('common.transaction.fields.date')}</th
+						>
+						<th class="min-w-[70px] p-2 font-medium whitespace-nowrap sm:p-3"
+							>{$t('common.transaction.fields.type')}</th
+						>
+						<th class="min-w-[90px] p-2 font-medium whitespace-nowrap sm:p-3"
+							>{$t('common.transaction.fields.category')}</th
+						>
+						<th class="min-w-[120px] p-2 font-medium whitespace-nowrap sm:p-3"
+							>{$t('common.transaction.fields.description')}</th
+						>
+						<th class="min-w-[60px] p-2 font-medium whitespace-nowrap sm:p-3"
+							>{$t('common.transaction.fields.active')}</th
+						>
+						<th class="min-w-[100px] p-2 text-right font-medium whitespace-nowrap sm:p-3"
+							>{$t('common.transaction.fields.amount_idr')}</th
+						>
+						<th class="min-w-[80px] p-2 text-right font-medium whitespace-nowrap sm:p-3"
+							>{$t('common.transaction.fields.actions')}</th
+						>
 					</tr>
-				{/each}
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					{#each transactions as t (t.id)}
+						<tr class="border-t hover:bg-muted/30">
+							<td class="p-2 text-xs whitespace-nowrap sm:p-3 sm:text-sm">{formatDate(t.date)}</td>
+							<td class="p-2 whitespace-nowrap sm:p-3">
+								<Badge
+									variant={t.type === 'income' ? 'default' : 'destructive'}
+									class="px-1 py-0.5 text-xs capitalize"
+								>
+									{t.type}
+								</Badge>
+							</td>
+							<td
+								class="max-w-[90px] truncate p-2 text-xs whitespace-nowrap sm:p-3 sm:text-sm"
+								title={t.category_name}>{t.category_name}</td
+							>
+							<td
+								class="max-w-[120px] truncate p-2 text-xs sm:max-w-[160px] sm:p-3 sm:text-sm"
+								title={t.description || '-'}>{t.description || '-'}</td
+							>
+							<td class="p-2 whitespace-nowrap sm:p-3">
+								<Badge variant={t.active ? 'default' : 'secondary'} class="px-1 py-0.5 text-xs">
+									{t.active ? activeText : inactiveText}
+								</Badge>
+							</td>
+							<td
+								class="p-2 text-right text-xs font-medium whitespace-nowrap tabular-nums sm:p-3 sm:text-sm"
+								>{formatAmount(t.amount)}</td
+							>
+							<td class="p-2 text-right whitespace-nowrap sm:p-3">
+								{#if t.proof}
+									<Button
+										size="sm"
+										variant="outline"
+										onclick={() => openProofDialog(t)}
+										class="h-6 px-2 py-1 text-xs"
+									>
+										{viewProofText}
+									</Button>
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+
+		<!-- Scroll indicator for mobile -->
+		<div class="block border-t bg-muted/20 p-2 text-center text-xs text-muted-foreground sm:hidden">
+			← Scroll to see more →
+		</div>
 	</div>
 {/if}
 

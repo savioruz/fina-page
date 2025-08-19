@@ -3,7 +3,7 @@ import I18n from '@sveltekit-i18n/base';
 import parser from '@sveltekit-i18n/parser-default';
 import lang from '$lang/lang.json';
 
-export const defaultLocale = 'en';
+export const defaultLocale = 'id';
 
 export const i18n = new I18n({
 	parser: parser(),

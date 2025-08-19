@@ -29,7 +29,11 @@ export class PublicTransactionService {
 	}
 
 	async getPublicTransactions(filters: TransactionFilters = {}): Promise<GetTransactionsResponse> {
-		const queryParams = this.buildQueryParams(filters);
+		const queryParams = this.buildQueryParams({
+			...filters,
+			// Always filter for active transactions
+			active: true
+		});
 		const raw = await apiClient.get<ApiResponse<GetTransactionsResponse> | GetTransactionsResponse>(
 			`/v1/transactions${queryParams}`
 		);

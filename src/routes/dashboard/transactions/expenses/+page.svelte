@@ -24,7 +24,6 @@
 	let showEditForm = false;
 	let editingTransaction: Transaction | null = null;
 
-	// Filter state
 	let searchDescription = '';
 	let selectedCategory = '';
 	let activeFilter: boolean | undefined = undefined;
@@ -37,7 +36,11 @@
 			// Build filters for transactions
 			const transactionFilters: TransactionFilters = { type: 'expense' };
 			if (searchDescription.trim()) transactionFilters.description = searchDescription.trim();
-			if (selectedCategory) transactionFilters.category = selectedCategory;
+			if (selectedCategory) {
+				// Find category name from ID for API filter
+				const categoryName = allCategories.find((cat) => cat.id === selectedCategory)?.name;
+				if (categoryName) transactionFilters.category = categoryName;
+			}
 			if (activeFilter !== undefined) transactionFilters.active = activeFilter;
 
 			const [transactionsResponse, categoriesResponse, allCategoriesResponse] = await Promise.all([
@@ -138,6 +141,7 @@
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold">{$t('common.transaction.types.expense')}</h1>
 		<Button
+			class="text-xs md:text-sm"
 			onclick={() => {
 				showCreateForm = true;
 			}}>{$t('common.transaction.actions.add_expense')}</Button
@@ -167,8 +171,10 @@
 					</select>
 				</div>
 				<div class="flex gap-2">
-					<Button onclick={applyFilters}>{$t('common.transaction.actions.filter')}</Button>
-					<Button variant="outline" onclick={clearFilters}
+					<Button onclick={applyFilters} class="text-xs"
+						>{$t('common.transaction.actions.filter')}</Button
+					>
+					<Button variant="outline" onclick={clearFilters} class="text-xs"
 						>{$t('common.transaction.actions.clear')}</Button
 					>
 				</div>
@@ -181,6 +187,7 @@
 						activeFilter = undefined;
 						applyFilters();
 					}}
+					class="text-xs"
 				>
 					{$t('common.status.all_status')}
 				</Button>
@@ -191,6 +198,7 @@
 						activeFilter = true;
 						applyFilters();
 					}}
+					class="text-xs"
 				>
 					{$t('common.status.active')}
 				</Button>
@@ -201,6 +209,7 @@
 						activeFilter = false;
 						applyFilters();
 					}}
+					class="text-xs"
 				>
 					{$t('common.status.inactive')}
 				</Button>

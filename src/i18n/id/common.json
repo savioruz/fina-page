@@ -126,13 +126,17 @@
 		},
 		"actions": {
 			"view_proof": "Lihat Bukti",
-			"edit": "Edit",
+			"edit": "Ubah",
 			"delete": "Hapus",
 			"close": "Tutup",
 			"cancel": "Batal",
 			"create": "Buat",
 			"update": "Perbarui",
-			"saving": "Menyimpan..."
+			"saving": "Menyimpan...",
+			"filter": "Saring",
+			"clear": "Bersihkan",
+			"add_expense": "Tambah Pengeluaran",
+			"add_income": "Tambah Pemasukan"
 		},
 		"types": {
 			"income": "Pemasukan",

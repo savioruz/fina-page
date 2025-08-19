@@ -4,12 +4,11 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { TransactionList } from '$lib/components/ui/transaction-list/index.js';
 	import type { Transaction } from '$lib/types/transaction';
 	import { t } from '$lib/i18n';
-	import { Trash, FileImage } from 'lucide-svelte';
+	import { Trash } from 'lucide-svelte';
 
 	let transactions: Transaction[] = [];
 	let filteredTransactions: Transaction[] = [];
@@ -19,66 +18,54 @@
 	};
 	let isLoading = true;
 	let error: string | null = null;
-	let searchQuery = '';
+	let isLoadingTransactions = false;
 	let selectedType: 'all' | 'income' | 'expense' = 'all';
+	let selectedPeriod: 'none' | 'month' | 'year' = 'none';
 	let currentPage = 1;
 	let totalPages = 1;
 	const itemsPerPage = 10;
-
-	let showProofDialog = false;
-	let selectedProof: string | null = null;
-	let selectedProofTransaction: Transaction | null = null;
-
-	$: {
-		if (transactions.length > 0) {
-			filterTransactions();
-		}
-	}
-
-	function filterTransactions() {
-		let filtered = transactions;
-
-		if (searchQuery.trim()) {
-			filtered = filtered.filter(
-				(t) =>
-					t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-					t.category_name.toLowerCase().includes(searchQuery.toLowerCase())
-			);
-		}
-
-		if (selectedType !== 'all') {
-			filtered = filtered.filter((t) => t.type === selectedType);
-		}
-
-		filtered = filtered.filter((t) => t.active);
-
-		filteredTransactions = filtered;
-		totalPages = Math.ceil(filtered.length / itemsPerPage);
-		currentPage = Math.min(currentPage, totalPages || 1);
-	}
+	let showTransactions = false;
 
 	function getPaginatedTransactions() {
 		const start = (currentPage - 1) * itemsPerPage;
 		const end = start + itemsPerPage;
-		return filteredTransactions.slice(start, end);
+		const paginated = filteredTransactions.slice(start, end);
+
+		console.log('getPaginatedTransactions:', {
+			filteredTransactions: filteredTransactions.length,
+			start,
+			end,
+			paginated: paginated.length,
+			isLoading
+		});
+
+		return paginated;
+	}
+
+	function getDateFilter(): string | undefined {
+		const now = new Date();
+		const currentYear = now.getFullYear();
+		const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11, API expects 1-12
+
+		switch (selectedPeriod) {
+			case 'month':
+				// Format: YYYY-MM for current month
+				return `${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
+			case 'year':
+				// Format: YYYY for current year
+				return currentYear.toString();
+			default:
+				return undefined;
+		}
 	}
 
 	function formatAmount(amount: number): string {
-		// Handle null, undefined, or NaN values
 		const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
 		return new Intl.NumberFormat('id-ID', {
 			style: 'currency',
 			currency: 'IDR',
 			minimumFractionDigits: 0
 		}).format(safeAmount);
-	}
-
-	function formatDate(dateString: string): string {
-		return new Date(dateString).toLocaleDateString('id-ID', {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		});
 	}
 
 	function getBalance(): number {
@@ -100,13 +87,62 @@
 	function resetFilters() {
 		searchQuery = '';
 		selectedType = 'all';
+		selectedPeriod = 'none';
 		currentPage = 1;
+		showTransactions = false;
+		transactions = [];
 	}
 
-	function openProofDialog(transaction: Transaction) {
-		selectedProof = transaction.proof || null;
-		selectedProofTransaction = transaction;
-		showProofDialog = true;
+	async function loadTransactions() {
+		try {
+			isLoadingTransactions = true;
+			error = null;
+
+			const filters: {
+				limit: number;
+				type?: string;
+				date?: string;
+			} = {
+				limit: 100
+			};
+
+			if (selectedType !== 'all') {
+				filters.type = selectedType;
+			}
+
+			const dateFilter = getDateFilter();
+			if (dateFilter) {
+				filters.date = dateFilter;
+			}
+
+			const transactionsData = await publicTransactionService.getPublicTransactions(filters);
+
+			if (Array.isArray(transactionsData)) {
+				transactions = transactionsData;
+			} else if (transactionsData?.transactions) {
+				transactions = transactionsData.transactions;
+			} else {
+				transactions = [];
+			}
+
+			filteredTransactions = transactions;
+			totalPages = Math.ceil(transactions.length / itemsPerPage);
+			currentPage = 1;
+		} catch (err: unknown) {
+			error = err instanceof Error ? err.message : 'Failed to load transactions';
+			console.error('Error loading transactions:', err);
+		} finally {
+			isLoadingTransactions = false;
+		}
+	}
+
+	function selectFilter(type: 'all' | 'income' | 'expense', period: 'none' | 'month' | 'year') {
+		console.log('selectFilter called with:', { type, period });
+		selectedType = type;
+		selectedPeriod = period;
+		showTransactions = true;
+
+		loadTransactions();
 	}
 
 	async function loadData() {
@@ -114,24 +150,15 @@
 			isLoading = true;
 			error = null;
 
-			// Load summary and recent transactions in parallel
-			const [summaryData, transactionsData] = await Promise.all([
-				publicTransactionService.getPublicTransactionSummary(),
-				publicTransactionService.getPublicTransactions({
-					limit: 100,
-					active: true
-				})
-			]);
+			const summaryData = await publicTransactionService.getPublicTransactionSummary();
 
-			// Handle potential null/undefined values from API
 			summary = {
 				total_income: summaryData?.total_income || 0,
 				total_expense: summaryData?.total_expense || 0
 			};
-			transactions = transactionsData?.transactions || [];
 		} catch (err: unknown) {
 			error = err instanceof Error ? err.message : 'Failed to load data';
-			console.error('Error loading public transactions:', err);
+			console.error('Error loading summary:', err);
 		} finally {
 			isLoading = false;
 		}
@@ -145,54 +172,61 @@
 <!-- Main Container -->
 <div class="min-h-screen bg-background">
 	<!-- Hero Section -->
-	<section class="py-4">
-		<div class="container mx-auto px-4">
+	<section class="py-6 sm:py-8 lg:py-12">
+		<div class="container mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="mx-auto max-w-4xl text-center">
-				<h1 class="mb-8 text-2xl font-bold text-foreground md:text-3xl">
+				<h1
+					class="mb-6 text-xl font-bold text-foreground sm:mb-8 sm:text-2xl md:text-3xl lg:text-4xl"
+				>
 					{$t('common.home.welcome_title')}
 				</h1>
 				{#if isLoading}
-					<div class="mx-auto max-w-2xl">
+					<div class="mx-auto w-full max-w-xs sm:max-w-md lg:max-w-2xl">
 						<Card>
-							<CardHeader class="space-y-4 text-center">
-								<Skeleton class="mx-auto h-6 w-24" />
-								<Skeleton class="mx-auto h-10 w-40" />
+							<CardHeader class="space-y-3 text-center sm:space-y-4">
+								<Skeleton class="mx-auto h-5 w-20 sm:h-6 sm:w-24" />
+								<Skeleton class="mx-auto h-8 w-32 sm:h-10 sm:w-40" />
 							</CardHeader>
 							<CardContent class="pt-0">
-								<div class="grid grid-cols-2 gap-4">
+								<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
 									<div class="space-y-2 text-center">
-										<Skeleton class="mx-auto h-4 w-16" />
-										<Skeleton class="mx-auto h-6 w-24" />
+										<Skeleton class="mx-auto h-3 w-14 sm:h-4 sm:w-16" />
+										<Skeleton class="mx-auto h-5 w-20 sm:h-6 sm:w-24" />
 									</div>
 									<div class="space-y-2 text-center">
-										<Skeleton class="mx-auto h-4 w-20" />
-										<Skeleton class="mx-auto h-6 w-24" />
+										<Skeleton class="mx-auto h-3 w-16 sm:h-4 sm:w-20" />
+										<Skeleton class="mx-auto h-5 w-20 sm:h-6 sm:w-24" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
 					</div>
 				{:else if error}
-					<Card class="border-destructive">
-						<CardContent class="pt-6">
-							<p class="text-center text-destructive">{error}</p>
-							<Button variant="outline" onclick={loadData} class="mt-4">
-								{$t('common.loading')}
-							</Button>
-						</CardContent>
-					</Card>
+					<div class="mx-auto w-full max-w-xs sm:max-w-md lg:max-w-2xl">
+						<Card class="border-destructive">
+							<CardContent class="pt-6">
+								<p class="text-center text-sm text-destructive sm:text-base">{error}</p>
+								<div class="mt-4 flex justify-center">
+									<Button variant="outline" onclick={loadData} size="sm" class="w-full sm:w-auto">
+										{$t('common.loading')}
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					</div>
 				{:else}
 					<!-- Summary Card with Title -->
-					<div class="mx-auto max-w-2xl">
+					<div class="mx-auto w-full max-w-xs sm:max-w-md lg:max-w-2xl">
 						<Card
 							class="border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-100 dark:border-blue-800 dark:from-blue-950 dark:to-indigo-950"
 						>
-							<CardHeader class="pb-4 text-center">
-								<CardTitle class="text-xl font-bold text-foreground">
+							<CardHeader class="pb-3 text-center sm:pb-4">
+								<CardTitle class="text-lg font-bold text-foreground sm:text-xl">
 									{$t('common.home.balance')}
 								</CardTitle>
 								<CardTitle
-									class="text-3xl font-bold md:text-4xl {getBalance() >= 0
+									class="text-xl font-bold break-all sm:text-2xl md:text-3xl lg:text-4xl {getBalance() >=
+									0
 										? 'text-blue-600'
 										: 'text-red-600'}"
 								>
@@ -200,19 +234,31 @@
 								</CardTitle>
 							</CardHeader>
 							<CardContent class="pt-0">
-								<div class="grid grid-cols-2 gap-4">
+								<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
 									<!-- Income -->
-									<div class="text-center">
-										<div class="mb-1 text-sm text-muted-foreground">Pemasukan</div>
-										<div class="text-lg font-semibold text-green-600">
+									<div
+										class="rounded-lg bg-white/50 p-3 text-center sm:bg-transparent sm:p-0 dark:bg-gray-800/50 sm:dark:bg-transparent"
+									>
+										<div class="mb-1 text-xs font-medium text-muted-foreground sm:text-sm">
+											Pemasukan
+										</div>
+										<div
+											class="text-sm font-semibold break-all text-green-600 sm:text-base lg:text-lg"
+										>
 											{formatAmount(summary.total_income)}
 										</div>
 									</div>
 
 									<!-- Expense -->
-									<div class="text-center">
-										<div class="mb-1 text-sm text-muted-foreground">Pengeluaran</div>
-										<div class="text-lg font-semibold text-red-600">
+									<div
+										class="rounded-lg bg-white/50 p-3 text-center sm:bg-transparent sm:p-0 dark:bg-gray-800/50 sm:dark:bg-transparent"
+									>
+										<div class="mb-1 text-xs font-medium text-muted-foreground sm:text-sm">
+											Pengeluaran
+										</div>
+										<div
+											class="text-sm font-semibold break-all text-red-600 sm:text-base lg:text-lg"
+										>
 											{formatAmount(summary.total_expense)}
 										</div>
 									</div>
@@ -226,208 +272,221 @@
 	</section>
 
 	<!-- Transactions Section -->
-	<section class="py-12">
-		<div class="container mx-auto px-4">
-			<div class="mx-auto max-w-6xl">
+	<section class="py-8 sm:py-12">
+		<div class="container mx-auto px-4 sm:px-6 lg:px-8">
+			<div class="w-full">
 				<div
-					class="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"
+					class="mb-6 flex flex-col items-start justify-between gap-3 sm:mb-8 sm:flex-row sm:items-center sm:gap-4"
 				>
 					<div>
-						<h2 class="text-2xl font-bold md:text-3xl">{$t('common.transactions')}</h2>
-						<p class="mt-2 text-muted-foreground">
-							{#if !isLoading}
+						<h2 class="text-xl font-bold sm:text-2xl md:text-3xl">{$t('common.transactions')}</h2>
+						<p class="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">
+							{#if showTransactions}
 								{filteredTransactions.length} of {transactions.length} transactions
+							{:else}
+								Click a filter to view transactions
 							{/if}
 						</p>
 					</div>
+				</div>
 
-					<!-- Filters -->
-					<div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-						<Input
-							bind:value={searchQuery}
-							placeholder={$t('common.search_by_description')}
-							class="w-full sm:w-64"
-						/>
-						<select
-							bind:value={selectedType}
-							class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none sm:w-auto"
+				<!-- Filter Badges -->
+				<div class="mb-4 sm:mb-6">
+					<!-- Mobile: Grid layout -->
+					<div class="grid grid-cols-2 gap-2 sm:hidden">
+						<Badge
+							variant={selectedType === 'all' && selectedPeriod === 'month' ? 'default' : 'outline'}
+							class="flex min-h-[36px] cursor-pointer items-center justify-center px-3 py-2 text-xs transition-all duration-150 hover:bg-primary/80 active:scale-95 active:bg-primary"
+							onclick={() => selectFilter('all', 'month')}
 						>
-							<option value="all">{$t('common.all')}</option>
-							<option value="income">{$t('common.income')}</option>
-							<option value="expense">{$t('common.expenses')}</option>
-						</select>
-						{#if searchQuery || selectedType !== 'all'}
-							<Button variant="outline" size="sm" onclick={resetFilters}>
-								<Trash class="h-4 w-4 text-red-500" />
-							</Button>
-						{/if}
+							This Month
+						</Badge>
+						<Badge
+							variant={selectedType === 'all' && selectedPeriod === 'year' ? 'default' : 'outline'}
+							class="flex min-h-[36px] cursor-pointer items-center justify-center px-3 py-2 text-xs transition-all duration-150 hover:bg-primary/80 active:scale-95 active:bg-primary"
+							onclick={() => selectFilter('all', 'year')}
+						>
+							This Year
+						</Badge>
+						<Badge
+							variant={selectedType === 'income' && selectedPeriod === 'none'
+								? 'default'
+								: 'outline'}
+							class="flex min-h-[36px] cursor-pointer items-center justify-center px-3 py-2 text-xs transition-all duration-150 hover:bg-green-600/80 hover:text-white active:scale-95 active:bg-green-700"
+							onclick={() => selectFilter('income', 'none')}
+						>
+							All Income
+						</Badge>
+						<Badge
+							variant={selectedType === 'expense' && selectedPeriod === 'none'
+								? 'default'
+								: 'outline'}
+							class="flex min-h-[36px] cursor-pointer items-center justify-center px-3 py-2 text-xs transition-all duration-150 hover:bg-red-600/80 hover:text-white active:scale-95 active:bg-red-700"
+							onclick={() => selectFilter('expense', 'none')}
+						>
+							All Expenses
+						</Badge>
+						<Badge
+							variant={selectedType === 'income' && selectedPeriod === 'month'
+								? 'default'
+								: 'outline'}
+							class="flex min-h-[36px] cursor-pointer items-center justify-center px-3 py-2 text-xs transition-all duration-150 hover:bg-green-600/80 hover:text-white active:scale-95 active:bg-green-700"
+							onclick={() => selectFilter('income', 'month')}
+						>
+							Income Month
+						</Badge>
+						<Badge
+							variant={selectedType === 'expense' && selectedPeriod === 'month'
+								? 'default'
+								: 'outline'}
+							class="flex min-h-[36px] cursor-pointer items-center justify-center px-3 py-2 text-xs transition-all duration-150 hover:bg-red-600/80 hover:text-white active:scale-95 active:bg-red-700"
+							onclick={() => selectFilter('expense', 'month')}
+						>
+							Expense Month
+						</Badge>
 					</div>
+
+					<!-- Desktop: Horizontal scroll layout -->
+					<div class="hidden overflow-x-auto pb-2 sm:block">
+						<div class="flex min-w-max gap-2">
+							<Badge
+								variant={selectedType === 'all' && selectedPeriod === 'month'
+									? 'default'
+									: 'outline'}
+								class="cursor-pointer text-sm whitespace-nowrap transition-all duration-150 hover:bg-primary/80 active:scale-95 active:bg-primary"
+								onclick={() => selectFilter('all', 'month')}
+							>
+								This Month
+							</Badge>
+							<Badge
+								variant={selectedType === 'all' && selectedPeriod === 'year'
+									? 'default'
+									: 'outline'}
+								class="cursor-pointer text-sm whitespace-nowrap transition-all duration-150 hover:bg-primary/80 active:scale-95 active:bg-primary"
+								onclick={() => selectFilter('all', 'year')}
+							>
+								This Year
+							</Badge>
+							<Badge
+								variant={selectedType === 'income' && selectedPeriod === 'none'
+									? 'default'
+									: 'outline'}
+								class="cursor-pointer text-sm whitespace-nowrap transition-all duration-150 hover:bg-green-600/80 hover:text-white active:scale-95 active:bg-green-700"
+								onclick={() => selectFilter('income', 'none')}
+							>
+								All Income
+							</Badge>
+							<Badge
+								variant={selectedType === 'expense' && selectedPeriod === 'none'
+									? 'default'
+									: 'outline'}
+								class="cursor-pointer text-sm whitespace-nowrap transition-all duration-150 hover:bg-red-600/80 hover:text-white active:scale-95 active:bg-red-700"
+								onclick={() => selectFilter('expense', 'none')}
+							>
+								All Expenses
+							</Badge>
+							<Badge
+								variant={selectedType === 'income' && selectedPeriod === 'month'
+									? 'default'
+									: 'outline'}
+								class="cursor-pointer text-sm whitespace-nowrap transition-all duration-150 hover:bg-green-600/80 hover:text-white active:scale-95 active:bg-green-700"
+								onclick={() => selectFilter('income', 'month')}
+							>
+								Income This Month
+							</Badge>
+							<Badge
+								variant={selectedType === 'expense' && selectedPeriod === 'month'
+									? 'default'
+									: 'outline'}
+								class="cursor-pointer text-sm whitespace-nowrap transition-all duration-150 hover:bg-red-600/80 hover:text-white active:scale-95 active:bg-red-700"
+								onclick={() => selectFilter('expense', 'month')}
+							>
+								Expenses This Month
+							</Badge>
+						</div>
+					</div>
+
+					{#if showTransactions}
+						<div class="mt-3 flex justify-center sm:justify-start">
+							<Badge
+								variant="secondary"
+								class="cursor-pointer px-3 py-2 text-xs transition-all duration-150 hover:bg-gray-600/80 active:scale-95 active:bg-gray-700 sm:text-sm"
+								onclick={resetFilters}
+							>
+								<Trash class="mr-1 h-3 w-3" />
+								Clear Filters
+							</Badge>
+						</div>
+					{/if}
 				</div>
 
 				<!-- Transactions List -->
-				{#if isLoading}
-					<div class="space-y-4">
-						{#each [0, 1, 2, 3, 4] as index (index)}
-							<Card>
-								<CardContent class="p-4">
-									<div class="flex items-center justify-between">
-										<div class="flex-1 space-y-2">
-											<Skeleton class="h-4 w-32" />
-											<Skeleton class="h-3 w-48" />
-										</div>
-										<div class="space-y-2 text-right">
-											<Skeleton class="ml-auto h-4 w-20" />
-											<Skeleton class="ml-auto h-3 w-16" />
-										</div>
-									</div>
-								</CardContent>
-							</Card>
-						{/each}
-					</div>
+				{#if !showTransactions}
+					<Card>
+						<CardContent class="pt-6 text-center">
+							<p class="text-sm text-muted-foreground sm:text-base">
+								Select a filter above to view transactions
+							</p>
+							<p class="mt-2 text-xs text-muted-foreground sm:text-sm">
+								Choose from periods or transaction types
+							</p>
+						</CardContent>
+					</Card>
 				{:else if error}
 					<Card class="border-destructive">
 						<CardContent class="pt-6 text-center">
-							<p class="mb-4 text-destructive">{error}</p>
-							<Button variant="outline" onclick={loadData}>Try Again</Button>
+							<p class="mb-4 text-sm text-destructive sm:text-base">{error}</p>
+							<Button
+								variant="outline"
+								onclick={loadTransactions}
+								size="sm"
+								class="w-full sm:w-auto">Try Again</Button
+							>
+						</CardContent>
+					</Card>
+				{:else if transactions.length === 0}
+					<Card>
+						<CardContent class="pt-6 text-center">
+							<div class="flex items-center justify-center py-4">
+								<Skeleton class="h-4 w-32 sm:w-48" />
+							</div>
+							<p class="text-xs text-muted-foreground sm:text-sm">Loading transactions...</p>
 						</CardContent>
 					</Card>
 				{:else if filteredTransactions.length === 0}
 					<Card>
 						<CardContent class="pt-6 text-center">
-							<p class="text-muted-foreground">{$t('common.no_transactions_found')}</p>
-							{#if searchQuery || selectedType !== 'all'}
-								<Button variant="outline" onclick={resetFilters} class="mt-4">
-									{$t('common.clear')}
-									{$t('common.filter')}
-								</Button>
-							{/if}
+							<p class="text-sm text-muted-foreground sm:text-base">
+								{$t('common.no_transactions_found')}
+							</p>
+							<p class="mt-2 text-xs text-muted-foreground sm:text-sm">
+								Try selecting a different filter
+							</p>
 						</CardContent>
 					</Card>
 				{:else}
-					<!-- Desktop Table View -->
-					<div class="hidden lg:block">
-						<Card>
-							<div class="overflow-x-auto">
-								<table class="w-full text-sm">
-									<thead class="bg-muted/50">
-										<tr class="text-left">
-											<th class="p-4 font-medium">{$t('common.transaction.fields.date')}</th>
-											<th class="p-4 font-medium">{$t('common.transaction.fields.type')}</th>
-											<th class="p-4 font-medium">{$t('common.transaction.fields.category')}</th>
-											<th class="p-4 font-medium">{$t('common.transaction.fields.description')}</th>
-											<th class="p-4 text-right font-medium"
-												>{$t('common.transaction.fields.amount_idr')}</th
-											>
-											<th class="p-4 text-center font-medium"
-												>{$t('common.transaction.fields.proof')}</th
-											>
-										</tr>
-									</thead>
-									<tbody>
-										{#each getPaginatedTransactions() as transaction (transaction.id)}
-											<tr class="border-t transition-colors hover:bg-muted/30">
-												<td class="p-4 whitespace-nowrap">{formatDate(transaction.date)}</td>
-												<td class="p-4">
-													<Badge
-														variant={transaction.type === 'income' ? 'default' : 'destructive'}
-														class="capitalize"
-													>
-														{transaction.type}
-													</Badge>
-												</td>
-												<td class="p-4">{transaction.category_name}</td>
-												<td class="max-w-[300px] truncate p-4" title={transaction.description}>
-													{transaction.description}
-												</td>
-												<td class="p-4 text-right font-medium tabular-nums">
-													{formatAmount(transaction.amount)}
-												</td>
-												<td class="p-4 text-center">
-													{#if transaction.proof}
-														<Button
-															size="sm"
-															variant="outline"
-															onclick={() => openProofDialog(transaction)}
-														>
-															<FileImage class="mr-1 h-4 w-4" />
-															{$t('common.transaction.actions.view_proof')}
-														</Button>
-													{:else}
-														<span class="text-sm text-muted-foreground"
-															>{$t('common.transaction.proof.no_proof')}</span
-														>
-													{/if}
-												</td>
-											</tr>
-										{/each}
-									</tbody>
-								</table>
-							</div>
-						</Card>
-					</div>
-
-					<!-- Mobile Card View -->
-					<div class="space-y-4 lg:hidden">
-						{#each getPaginatedTransactions() as transaction (transaction.id)}
-							<Card>
-								<CardContent class="p-4">
-									<div class="mb-3 flex items-start justify-between">
-										<div class="flex-1">
-											<div class="mb-2 flex items-center gap-2">
-												<Badge
-													variant={transaction.type === 'income' ? 'default' : 'destructive'}
-													class="text-xs capitalize"
-												>
-													{transaction.type}
-												</Badge>
-												<span class="text-xs text-muted-foreground">
-													{formatDate(transaction.date)}
-												</span>
-											</div>
-											<h3 class="mb-1 text-sm font-medium">{transaction.category_name}</h3>
-											<p class="line-clamp-2 text-xs text-muted-foreground">
-												{transaction.description}
-											</p>
-										</div>
-										<div class="ml-4 text-right">
-											<div
-												class="text-lg font-bold tabular-nums {transaction.type === 'income'
-													? 'text-green-600'
-													: 'text-red-600'}"
-											>
-												{formatAmount(transaction.amount)}
-											</div>
-										</div>
-									</div>
-									<!-- Proof button for mobile -->
-									<div class="mt-3 flex justify-end">
-										{#if transaction.proof}
-											<Button
-												size="sm"
-												variant="outline"
-												onclick={() => openProofDialog(transaction)}
-											>
-												<FileImage class="mr-1 h-4 w-4" />
-												{$t('common.transaction.actions.view_proof')}
-											</Button>
-										{:else}
-											<span class="text-xs text-muted-foreground"
-												>{$t('common.transaction.proof.no_proof')}</span
-											>
-										{/if}
-									</div>
-								</CardContent>
-							</Card>
-						{/each}
+					<div class="w-full overflow-x-auto">
+						<TransactionList
+							transactions={getPaginatedTransactions()}
+							isLoading={isLoadingTransactions}
+						/>
 					</div>
 
 					<!-- Pagination -->
 					{#if totalPages > 1}
-						<div class="mt-8 flex items-center justify-center gap-2">
-							<Button variant="outline" size="sm" onclick={prevPage} disabled={currentPage === 1}>
+						<div
+							class="mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center sm:gap-2"
+						>
+							<Button
+								variant="outline"
+								size="sm"
+								onclick={prevPage}
+								disabled={currentPage === 1}
+								class="w-full sm:w-auto"
+							>
 								Previous
 							</Button>
-							<span class="px-4 text-sm text-muted-foreground">
+							<span class="px-2 text-xs text-muted-foreground sm:px-4 sm:text-sm">
 								{currentPage} of {totalPages}
 							</span>
 							<Button
@@ -435,6 +494,7 @@
 								size="sm"
 								onclick={nextPage}
 								disabled={currentPage === totalPages}
+								class="w-full sm:w-auto"
 							>
 								Next
 							</Button>
@@ -445,75 +505,3 @@
 		</div>
 	</section>
 </div>
-
-<!-- Proof Dialog -->
-<Dialog.Root bind:open={showProofDialog}>
-	<Dialog.Content class="sm:max-w-[600px]">
-		<Dialog.Header>
-			<Dialog.Title>{$t('common.transaction.proof.dialog_title')}</Dialog.Title>
-			{#if selectedProofTransaction}
-				<Dialog.Description>
-					{selectedProofTransaction.type === 'income'
-						? $t('common.transaction.types.income')
-						: $t('common.transaction.types.expense')} -
-					{selectedProofTransaction.category_name} -
-					{formatAmount(selectedProofTransaction.amount)}
-				</Dialog.Description>
-			{/if}
-		</Dialog.Header>
-		<div class="mt-4">
-			{#if selectedProof}
-				<div class="flex justify-center">
-					<img
-						src={selectedProof}
-						alt="Transaction proof"
-						class="max-h-[400px] max-w-full rounded-lg object-contain shadow-lg"
-						onerror={(e) => {
-							const target = e.target as HTMLImageElement;
-							if (target) {
-								target.style.display = 'none';
-								const sibling = target.nextElementSibling as HTMLElement;
-								if (sibling) sibling.style.display = 'block';
-							}
-						}}
-					/>
-					<div class="hidden text-center text-muted-foreground">
-						<p>{$t('common.transaction.proof.failed_to_load')}</p>
-						<Button
-							variant="outline"
-							onclick={() => selectedProof && window.open(selectedProof, '_blank')}
-							class="mt-2"
-						>
-							{$t('common.transaction.proof.open_in_new_tab')}
-						</Button>
-					</div>
-				</div>
-				<div class="mt-4 flex justify-center gap-2">
-					<Button
-						variant="outline"
-						onclick={() => selectedProof && window.open(selectedProof, '_blank')}
-					>
-						{$t('common.transaction.proof.open_in_new_tab')}
-					</Button>
-					<Button variant="outline" onclick={() => (showProofDialog = false)}>
-						{$t('common.transaction.actions.close')}
-					</Button>
-				</div>
-			{:else}
-				<p class="text-center text-muted-foreground">
-					{$t('common.transaction.proof.no_proof_available')}
-				</p>
-			{/if}
-		</div>
-	</Dialog.Content>
-</Dialog.Root>
-
-<style>
-	.line-clamp-2 {
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-</style>

@@ -13,6 +13,7 @@
 		CreateTransactionRequest,
 		TransactionFilters
 	} from '$lib/types/transaction';
+	import { t } from '$lib/i18n';
 
 	let transactions: Transaction[] = [];
 	let categories: Array<{ id: string; name: string }> = [];
@@ -34,7 +35,11 @@
 		try {
 			const transactionFilters: TransactionFilters = { type: 'income' };
 			if (searchDescription.trim()) transactionFilters.description = searchDescription.trim();
-			if (selectedCategory) transactionFilters.category = selectedCategory;
+			if (selectedCategory) {
+				// Find category name from ID for API filter
+				const categoryName = allCategories.find((cat) => cat.id === selectedCategory)?.name;
+				if (categoryName) transactionFilters.category = categoryName;
+			}
 			if (activeFilter !== undefined) transactionFilters.active = activeFilter;
 
 			const [transactionsResponse, categoriesResponse, allCategoriesResponse] = await Promise.all([
@@ -131,11 +136,12 @@
 
 <div class="flex flex-1 flex-col gap-4 p-4">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold">Income</h1>
+		<h1 class="text-2xl font-bold">{$t('common.transaction.types.income')}</h1>
 		<Button
+			class="text-xs md:text-sm"
 			onclick={() => {
 				showCreateForm = true;
-			}}>Add Income</Button
+			}}>{$t('common.transaction.actions.add_income')}</Button
 		>
 	</div>
 
@@ -145,7 +151,7 @@
 			<div class="flex flex-col gap-4 md:flex-row">
 				<div class="flex-1">
 					<Input
-						placeholder="Search by description..."
+						placeholder={$t('common.transaction.filters.search_description')}
 						bind:value={searchDescription}
 						onkeydown={(e) => e.key === 'Enter' && applyFilters()}
 					/>
@@ -162,7 +168,7 @@
 					</select>
 				</div>
 				<div class="flex gap-2">
-					<Button onclick={applyFilters}>Filter</Button>
+					<Button onclick={applyFilters} class="md:text-md text-xs">Filter</Button>
 					<Button variant="outline" onclick={clearFilters}>Clear</Button>
 				</div>
 			</div>
